@@ -164,8 +164,8 @@ Test(test_suite_ringfs, ringtest_ringfs_format)
     printf("## ringfs_format()\n");
     ringfs_format(&fs1);
 }
-#if 0
-START_TEST(test_ringfs_scan)
+
+Test(test_suite_ringfs, test_ringfs_scan)
 {
     printf("# test_ringfs_scan\n");
 
@@ -181,34 +181,34 @@ START_TEST(test_ringfs_scan)
     printf("## ringfs_init()\n");
     ringfs_init(&fs2, &flash, DEFAULT_VERSION, sizeof(object_t));
     printf("## ringfs_scan()\n");
-    ck_assert(ringfs_scan(&fs2) == 0);
+    cr_assert(ringfs_scan(&fs2) == 0);
 
     /* this is an empty FS, should start with this: */
-    ck_assert_int_eq(fs2.slots_per_sector, (flash.sector_size-SECTOR_HEADER_SIZE)/(SLOT_HEADER_SIZE+sizeof(object_t)));
+    cr_assert_eq(fs2.slots_per_sector, (flash.sector_size-SECTOR_HEADER_SIZE)/(SLOT_HEADER_SIZE+sizeof(object_t)));
     assert_loc_equiv_to_offset(&fs2, &fs2.read, 0);
     assert_loc_equiv_to_offset(&fs2, &fs2.cursor, 0);
     assert_loc_equiv_to_offset(&fs2, &fs2.write, 0);
 
     /* now insert some objects */
-    ck_assert(ringfs_append(&fs2, (int[]) { 0x11 }) == 0);
-    ck_assert(ringfs_append(&fs2, (int[]) { 0x22 }) == 0);
-    ck_assert(ringfs_append(&fs2, (int[]) { 0x33 }) == 0);
+    cr_assert(ringfs_append(&fs2, (int[]) { 0x11 }) == 0);
+    cr_assert(ringfs_append(&fs2, (int[]) { 0x22 }) == 0);
+    cr_assert(ringfs_append(&fs2, (int[]) { 0x33 }) == 0);
 
     /* rescan */
     printf("## ringfs_scan()\n");
-    ck_assert(ringfs_scan(&fs2) == 0);
+    cr_assert(ringfs_scan(&fs2) == 0);
 
     /* make sure the objects are there */
-    ck_assert(ringfs_count_exact(&fs2) == 3);
+    cr_assert(ringfs_count_exact(&fs2) == 3);
 
     /* scan should fail if we supply a different version */
     struct ringfs fs3;
-    printf("## ringfs_init()\n");
+    printf("## ringfs_init()\n"); 
     ringfs_init(&fs3, &flash, DEFAULT_VERSION+1, sizeof(object_t));
     printf("## ringfs_scan()\n");
-    ck_assert(ringfs_scan(&fs3) != 0);
+    cr_assert(ringfs_scan(&fs3) != 0);
 }
-
+#if 0
 START_TEST(test_ringfs_append)
 {
     printf("# test_ringfs_append\n");
@@ -224,7 +224,7 @@ START_TEST(test_ringfs_append)
     /* fetches before appends should not change anything */
     for (int i=0; i<3; i++) {
         printf("## ringfs_fetch()\n");
-        ck_assert(ringfs_fetch(&fs, &obj) < 0);
+        cr_assert(ringfs_fetch(&fs, &obj) < 0);
     }
     assert_loc_equiv_to_offset(&fs, &fs.read, 0);
     assert_loc_equiv_to_offset(&fs, &fs.write, 0);
@@ -244,24 +244,24 @@ START_TEST(test_ringfs_append)
     /* now we fetch at it. */
     for (int i=0; i<3; i++) {
         printf("## ringfs_fetch()\n");
-        ck_assert(ringfs_fetch(&fs, &obj) == 0);
-        ck_assert_int_eq(obj, 0x11*(i+1));
+        cr_assert(ringfs_fetch(&fs, &obj) == 0);
+        cr_assert_eq(obj, 0x11*(i+1));
 
         /* make sure the cursor head has advanced */
         assert_loc_equiv_to_offset(&fs, &fs.cursor, i+1);
     }
     /* there should be no data left */
-    ck_assert(ringfs_fetch(&fs, &obj) < 0);
+    cr_assert(ringfs_fetch(&fs, &obj) < 0);
 
     /* test the rewind. */
-    ck_assert(ringfs_rewind(&fs) == 0);
+    cr_assert(ringfs_rewind(&fs) == 0);
     assert_loc_equiv_to_offset(&fs, &fs.cursor, 0);
 
     /* try to read the objects once again. */
     for (int i=0; i<3; i++) {
         printf("## ringfs_fetch()\n");
-        ck_assert(ringfs_fetch(&fs, &obj) == 0);
-        ck_assert_int_eq(obj, 0x11*(i+1));
+        cr_assert(ringfs_fetch(&fs, &obj) == 0);
+        cr_assert_eq(obj, 0x11*(i+1));
     }
 }
 END_TEST
@@ -286,11 +286,11 @@ START_TEST(test_ringfs_discard)
     int obj;
     for (int i=0; i<2; i++) {
         printf("## ringfs_fetch()\n");
-        ck_assert(ringfs_fetch(&fs, &obj) == 0);
-        ck_assert_int_eq(obj, 0x11*(i+1));
+        cr_assert(ringfs_fetch(&fs, &obj) == 0);
+        cr_assert_eq(obj, 0x11*(i+1));
     }
     /* discard whatever was read */
-    ck_assert(ringfs_discard(&fs) == 0);
+    cr_assert(ringfs_discard(&fs) == 0);
     assert_scan_integrity(&fs);
     /* make sure we're consistent */
     assert_loc_equiv_to_offset(&fs, &fs.read, 2);
@@ -300,11 +300,11 @@ START_TEST(test_ringfs_discard)
     /* read the rest of the records */
     for (int i=2; i<4; i++) {
         printf("## ringfs_fetch()\n");
-        ck_assert(ringfs_fetch(&fs, &obj) == 0);
-        ck_assert_int_eq(obj, 0x11*(i+1));
+        cr_assert(ringfs_fetch(&fs, &obj) == 0);
+        cr_assert_eq(obj, 0x11*(i+1));
     }
     /* discard them */
-    ck_assert(ringfs_discard(&fs) == 0);
+    cr_assert(ringfs_discard(&fs) == 0);
     assert_loc_equiv_to_offset(&fs, &fs.read, 4);
     assert_loc_equiv_to_offset(&fs, &fs.cursor, 4);
     assert_loc_equiv_to_offset(&fs, &fs.write, 4);
@@ -321,7 +321,7 @@ START_TEST(test_ringfs_capacity)
 
     int slots_per_sector = (flash.sector_size-SECTOR_HEADER_SIZE)/(SLOT_HEADER_SIZE+sizeof(object_t));
     int sectors = flash.sector_count;
-    ck_assert_int_eq(ringfs_capacity(&fs), (sectors-1) * slots_per_sector);
+    cr_assert_eq(ringfs_capacity(&fs), (sectors-1) * slots_per_sector);
 }
 END_TEST
 
@@ -333,61 +333,61 @@ START_TEST(test_ringfs_count)
     struct ringfs fs;
     ringfs_init(&fs, &flash, DEFAULT_VERSION, sizeof(object_t));
     ringfs_format(&fs);
-    ck_assert(ringfs_count_exact(&fs) == 0);
+    cr_assert(ringfs_count_exact(&fs) == 0);
 
     printf("## write some records\n");
     for (int i=0; i<10; i++)
         ringfs_append(&fs, (int[]) { 0x11*(i+1) });
-    ck_assert_int_eq(ringfs_count_exact(&fs), 10);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 10);
+    cr_assert_eq(ringfs_count_exact(&fs), 10);
+    cr_assert_eq(ringfs_count_estimate(&fs), 10);
 
     printf("## rescan\n");
-    ck_assert(ringfs_scan(&fs) == 0);
-    ck_assert_int_eq(ringfs_count_exact(&fs), 10);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 10);
+    cr_assert(ringfs_scan(&fs) == 0);
+    cr_assert_eq(ringfs_count_exact(&fs), 10);
+    cr_assert_eq(ringfs_count_estimate(&fs), 10);
 
     printf("## append more records\n");
     for (int i=10; i<13; i++)
         ringfs_append(&fs, (int[]) { 0x11*(i+1) });
-    ck_assert_int_eq(ringfs_count_exact(&fs), 13);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 13);
+    cr_assert_eq(ringfs_count_exact(&fs), 13);
+    cr_assert_eq(ringfs_count_estimate(&fs), 13);
 
     printf("## fetch some objects without discard\n");
     for (int i=0; i<4; i++) {
-        ck_assert(ringfs_fetch(&fs, &obj) == 0);
-        ck_assert_int_eq(obj, 0x11*(i+1));
+        cr_assert(ringfs_fetch(&fs, &obj) == 0);
+        cr_assert_eq(obj, 0x11*(i+1));
     }
-    ck_assert_int_eq(ringfs_count_exact(&fs), 13);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 13);
+    cr_assert_eq(ringfs_count_exact(&fs), 13);
+    cr_assert_eq(ringfs_count_estimate(&fs), 13);
 
     printf("## rescan\n");
-    ck_assert(ringfs_scan(&fs) == 0);
-    ck_assert_int_eq(ringfs_count_exact(&fs), 13);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 13);
+    cr_assert(ringfs_scan(&fs) == 0);
+    cr_assert_eq(ringfs_count_exact(&fs), 13);
+    cr_assert_eq(ringfs_count_estimate(&fs), 13);
 
     printf("## fetch some objects with discard\n");
     for (int i=0; i<4; i++) {
-        ck_assert(ringfs_fetch(&fs, &obj) == 0);
-        ck_assert_int_eq(obj, 0x11*(i+1));
+        cr_assert(ringfs_fetch(&fs, &obj) == 0);
+        cr_assert_eq(obj, 0x11*(i+1));
     }
-    ck_assert_int_eq(ringfs_count_exact(&fs), 13);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 13);
-    ck_assert(ringfs_discard(&fs) == 0);
-    ck_assert_int_eq(ringfs_count_exact(&fs), 9);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 9);
+    cr_assert_eq(ringfs_count_exact(&fs), 13);
+    cr_assert_eq(ringfs_count_estimate(&fs), 13);
+    cr_assert(ringfs_discard(&fs) == 0);
+    cr_assert_eq(ringfs_count_exact(&fs), 9);
+    cr_assert_eq(ringfs_count_estimate(&fs), 9);
 
     printf("## fill the segment\n");
     int count = fs.slots_per_sector - 1;
     for (int i=0; i<count; i++)
         ringfs_append(&fs, (int[]) { 0x42 });
-    ck_assert_int_eq(ringfs_count_exact(&fs), 9+count);
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 9+count);
+    cr_assert_eq(ringfs_count_exact(&fs), 9+count);
+    cr_assert_eq(ringfs_count_estimate(&fs), 9+count);
 
     printf("## extra synthetic tests for estimation\n");
     /* wrapping around */
     fs.read = (struct ringfs_loc) { fs.flash->sector_count - 1, fs.slots_per_sector - 1 };
     fs.write = (struct ringfs_loc) { 0, 0 };
-    ck_assert_int_eq(ringfs_count_estimate(&fs), 1);
+    cr_assert_eq(ringfs_count_estimate(&fs), 1);
 }
 END_TEST
 
@@ -405,7 +405,7 @@ START_TEST(test_ringfs_overflow)
     printf("## fill filesystem to the brim\n");
     for (int i=0; i<capacity; i++)
         ringfs_append(&fs, (int[]) { i });
-    ck_assert_int_eq(ringfs_count_exact(&fs), capacity);
+    cr_assert_eq(ringfs_count_exact(&fs), capacity);
     assert_scan_integrity(&fs);
 
     /* won't hurt to stress it a little bit! */
@@ -413,14 +413,14 @@ START_TEST(test_ringfs_overflow)
         printf("## add one more object\n");
         ringfs_append(&fs, (int[]) { 0x42 });
         /* should kill one entire sector to make space */
-        ck_assert_int_eq(ringfs_count_exact(&fs), capacity - fs.slots_per_sector + 1);
+        cr_assert_eq(ringfs_count_exact(&fs), capacity - fs.slots_per_sector + 1);
         assert_scan_integrity(&fs);
 
         printf("## fill back up to the sector capacity\n");
         for (int i=0; i<fs.slots_per_sector-1; i++)
             ringfs_append(&fs, (int[]) { i });
 
-        ck_assert_int_eq(ringfs_count_exact(&fs), capacity);
+        cr_assert_eq(ringfs_count_exact(&fs), capacity);
         assert_scan_integrity(&fs);
     }
 }
