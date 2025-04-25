@@ -130,10 +130,10 @@ static void fixture_flashsim_teardown(void)
 #define DEFAULT_VERSION 0x000000042
 typedef struct
 {
-    uint8_t data[4];
+    uint8_t data[8];
 } object_t;
 #define SECTOR_HEADER_SIZE 8
-#define SLOT_HEADER_SIZE 4
+#define SLOT_HEADER_SIZE 8
 
 static void assert_loc_equiv_to_offset(const struct ringfs *fs, const struct ringfs_loc *loc, int offset)
 {
