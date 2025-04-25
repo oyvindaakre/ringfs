@@ -114,7 +114,7 @@ static struct ringfs_flash_partition flash = {
 
 static void fixture_flashsim_setup(void)
 {
-    sim = flashsim_open("tests/ringfs.sim",
+    sim = flashsim_open("ringfs.sim",
             flash.sector_size * (flash.sector_offset + flash.sector_count),
             flash.sector_size);
 }
@@ -127,8 +127,6 @@ static void fixture_flashsim_teardown(void)
 
 /* RingFS tests. */
 
-#if 0
-
 #define DEFAULT_VERSION 0x000000042
 typedef struct
 {
@@ -140,21 +138,23 @@ typedef struct
 static void assert_loc_equiv_to_offset(const struct ringfs *fs, const struct ringfs_loc *loc, int offset)
 {
     int loc_offset = loc->sector * fs->slots_per_sector + loc->slot;
-    ck_assert_int_eq(offset, loc_offset);
+    cr_assert_eq(offset, loc_offset);
 }
 
 static void assert_scan_integrity(const struct ringfs *fs)
 {
     struct ringfs newfs;
     ringfs_init(&newfs, fs->flash, fs->version, fs->object_size);
-    ck_assert(ringfs_scan(&newfs) == 0);
-    ck_assert_int_eq(newfs.read.sector, fs->read.sector);
-    ck_assert_int_eq(newfs.read.slot, fs->read.slot);
-    ck_assert_int_eq(newfs.write.sector, fs->write.sector);
-    ck_assert_int_eq(newfs.write.slot, fs->write.slot);
+    cr_assert(ringfs_scan(&newfs) == 0);
+    cr_assert_eq(newfs.read.sector, fs->read.sector);
+    cr_assert_eq(newfs.read.slot, fs->read.slot);
+    cr_assert_eq(newfs.write.sector, fs->write.sector);
+    cr_assert_eq(newfs.write.slot, fs->write.slot);
 }
 
-START_TEST(test_ringfs_format)
+TestSuite(test_suite_ringfs, .init = fixture_flashsim_setup, .fini=fixture_flashsim_teardown);
+
+Test(test_suite_ringfs, ringtest_ringfs_format)
 {
     printf("# test_ringfs_format\n");
 
@@ -164,8 +164,7 @@ START_TEST(test_ringfs_format)
     printf("## ringfs_format()\n");
     ringfs_format(&fs1);
 }
-END_TEST
-
+#if 0
 START_TEST(test_ringfs_scan)
 {
     printf("# test_ringfs_scan\n");
@@ -209,7 +208,6 @@ START_TEST(test_ringfs_scan)
     printf("## ringfs_scan()\n");
     ck_assert(ringfs_scan(&fs3) != 0);
 }
-END_TEST
 
 START_TEST(test_ringfs_append)
 {
