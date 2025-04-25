@@ -18,6 +18,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 #define LOG(fs, str, ...) \
     do { \
@@ -96,27 +97,70 @@ enum slot_status {
 
 struct slot_header {
     uint32_t status;
+    int data_length;
 };
 
-static int _slot_address(struct ringfs *fs, struct ringfs_loc *loc)
+static int _slot_address(struct ringfs *fs, struct ringfs_loc *loc) // TODO handle the block count?
 {
     return _sector_address(fs, loc->sector) +
            sizeof(struct sector_header) +
-           (sizeof(struct slot_header) + fs->object_size) * loc->slot;
+           (sizeof(struct slot_header) /*+ fs->object_size*/) * loc->slot; // Now we allow slots to directly follow each other instead of being at fixed positions
 }
-
+/*
 static int _slot_get_status(struct ringfs *fs, struct ringfs_loc *loc, uint32_t *status)
 {
     return fs->flash->read(fs->flash,
             _slot_address(fs, loc) + offsetof(struct slot_header, status),
             status, sizeof(*status));
 }
+*/
+
+static int _slot_get_data_length(struct ringfs *fs, struct ringfs_loc *loc, int *data_length)
+{
+    return fs->flash->read(fs->flash,
+            _slot_address(fs, loc) + offsetof(struct slot_header, data_length),
+            data_length, sizeof(*data_length));
+}
+
+static int _slot_get_header(struct ringfs *fs, struct ringfs_loc *loc, struct slot_header *header)
+{
+    return fs->flash->read(fs->flash,
+            _slot_address(fs, loc), header, sizeof(*header));
+}
+
 
 static int _slot_set_status(struct ringfs *fs, struct ringfs_loc *loc, uint32_t status)
 {
     return fs->flash->program(fs->flash,
             _slot_address(fs, loc) + offsetof(struct slot_header, status),
             &status, sizeof(status));
+}
+
+static int _slot_set_header(struct ringfs *fs, struct ringfs_loc *loc, struct slot_header *header)
+{
+    return fs->flash->program(fs->flash, _slot_address(fs, loc), header, sizeof(*header));
+}
+
+static int _size_to_number_of_slots(const struct ringfs *fs, int size)
+{
+    int slots = (size + sizeof(struct slot_header)) / fs->object_size;
+    int remain = size % fs->object_size;
+    if (remain)
+    {
+        slots++;
+    }
+    return slots;
+}
+
+static int _slots_to_max_data_length(struct ringfs *fs, int num_slots)
+{
+    int max_len = num_slots * fs->object_size;
+    max_len -= sizeof(struct slot_header);
+    if (max_len < 0)
+    {
+        max_len = 0;
+    }
+    return max_len;
 }
 
 /**
@@ -140,9 +184,9 @@ static void _loc_advance_sector(struct ringfs *fs, struct ringfs_loc *loc)
 }
 
 /** Advance a location to the next slot, advancing the sector too if needed. */
-static void _loc_advance_slot(struct ringfs *fs, struct ringfs_loc *loc)
+static void _loc_advance_slot(struct ringfs *fs, struct ringfs_loc *loc, int steps)
 {
-    loc->slot++;
+    loc->slot += steps;
     if (loc->slot >= fs->slots_per_sector)
         _loc_advance_sector(fs, loc);
 }
@@ -270,15 +314,17 @@ int ringfs_scan(struct ringfs *fs)
     fs->write.sector = write_sector;
     fs->write.slot = 0;
     while (fs->write.sector == write_sector) {
-        uint32_t status;
-        if (_slot_get_status(fs, &fs->write, &status) == -1)
+        //uint32_t status;
+        //_slot_get_status(fs, &fs->write, &status);
+        struct slot_header header = {0,};
+        if (_slot_get_header(fs, &fs->write, &header) == -1)
         {
             return RINGFS_ERR;
         }
-        if (status == SLOT_ERASED)
+        if (header.status == SLOT_ERASED)
             break;
 
-        _loc_advance_slot(fs, &fs->write);
+        _loc_advance_slot(fs, &fs->write, 1);
     }
     /* If the sector was full, we're at the beginning of a FREE sector now. */
 
@@ -288,15 +334,17 @@ int ringfs_scan(struct ringfs *fs)
     fs->read.sector = read_sector;
     fs->read.slot = 0;
     while (!_loc_equal(&fs->read, &fs->write)) {
-        uint32_t status;
-        if (_slot_get_status(fs, &fs->read, &status) == -1)
+        //uint32_t status;
+        //_slot_get_status(fs, &fs->read, &status);
+        struct slot_header header = {0,};
+        if (_slot_get_header(fs, &fs->read, &header) == -1)
         {
             return RINGFS_ERR;
         }
-        if (status == SLOT_VALID)
+        if (header.status == SLOT_VALID)
             break;
 
-        _loc_advance_slot(fs, &fs->read);
+        _loc_advance_slot(fs, &fs->read, 1);
     }
 
     /* Move the read cursor to the read head position. */
@@ -325,16 +373,22 @@ int ringfs_count_exact(struct ringfs *fs)
     /* Use a temporary loc for iteration. */
     struct ringfs_loc loc = fs->read;
     while (!_loc_equal(&loc, &fs->write)) {
-        uint32_t status;
-        if (_slot_get_status(fs, &loc, &status) == -1)
+        //uint32_t status;
+        //_slot_get_status(fs, &loc, &status);
+        struct slot_header header = {0,};
+        if (_slot_get_header(fs, &loc, &header) == -1)
         {
             return RINGFS_ERR;
         }
 
-        if (status == SLOT_VALID)
+        int advance = 1;
+        if (header.status == SLOT_VALID)
+        {
             count++;
+            advance = _size_to_number_of_slots(fs, header.data_length);
+        }
 
-        _loc_advance_slot(fs, &loc);
+        _loc_advance_slot(fs, &loc, advance);
     }
 
     return count;
@@ -347,8 +401,14 @@ int ringfs_append(struct ringfs *fs, const void *object)
 
 int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
 {
-    if (size > fs->object_size || size < 0) {
+    if (/*size > fs->object_size || */size < 0) {
         return RINGFS_INVALID_PARAMETER;
+    }
+
+    int slots_needed = _size_to_number_of_slots(fs, size);
+    if (slots_needed > fs->slots_per_sector)
+    {
+        return -1;
     }
 
     uint32_t status;
@@ -386,8 +446,27 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
         return RINGFS_CORRUPTED;
     }
 
+    int free_slots_in_sector = fs->slots_per_sector - fs->write.slot;
+    if (slots_needed > free_slots_in_sector)
+    {
+        struct slot_header header = {
+            .status = SLOT_GARBAGE,
+            .data_length = _slots_to_max_data_length(fs, free_slots_in_sector),
+        };
+        _slot_set_header(fs, &fs->write, &header);
+        _loc_advance_slot(fs, &fs->write, free_slots_in_sector);
+        return ringfs_append_ex(fs, object, size);
+    }
+
     /* Preallocate slot. */
-    _slot_set_status(fs, &fs->write, SLOT_RESERVED);
+    struct slot_header header = {
+        .status = SLOT_RESERVED,
+        .data_length = size,
+    };
+    _slot_set_header(fs, &fs->write, &header);
+    volatile int slot_addr = _slot_address(fs, &fs->write);
+    printf("write.slot=%d, write.sector=%d, slot addr=%d\r\n", fs->write.slot, fs->write.sector, slot_addr);
+    //_slot_set_status(fs, &fs->write, SLOT_RESERVED);
 
     /* Write object. */
     if (fs->flash->program(fs->flash,
@@ -401,7 +480,7 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
     _slot_set_status(fs, &fs->write, SLOT_VALID);
 
     /* Advance the write head. */
-    _loc_advance_slot(fs, &fs->write);
+    _loc_advance_slot(fs, &fs->write, slots_needed);
 
     return RINGFS_OK;
 }
@@ -413,31 +492,37 @@ int ringfs_fetch(struct ringfs *fs, void *object)
 
 int ringfs_fetch_ex(struct ringfs *fs, void *object, int size)
 {
-    if (size > fs->object_size || size < 0) {
+    if (/*size > fs->object_size ||*/ size < 0) {
         return RINGFS_INVALID_PARAMETER;
     }
 
     /* Advance forward in search of a valid slot. */
     while (!_loc_equal(&fs->cursor, &fs->write)) {
-        uint32_t status;
-
-        if (_slot_get_status(fs, &fs->cursor, &status) == -1)
+        struct slot_header header;
+        if (_slot_get_header(fs, &fs->cursor, &header) == -1)
         {
             return RINGFS_ERR;
         }
+        uint32_t status = header.status;
+
+        //_slot_get_status(fs, &fs->cursor, &status);
 
         if (status == SLOT_VALID) {
+            if (header.data_length > size)
+            {
+                return RINGFS_DESTINATION_MEM_INSUFFICIENT;
+            }
             if (fs->flash->read(fs->flash,
                     _slot_address(fs, &fs->cursor) + sizeof(struct slot_header),
                     object, size) == -1)
             {
                 return RINGFS_ERR;
             }
-            _loc_advance_slot(fs, &fs->cursor);
+            _loc_advance_slot(fs, &fs->cursor, _size_to_number_of_slots(fs, header.data_length));
             return RINGFS_OK;
         }
 
-        _loc_advance_slot(fs, &fs->cursor);
+        _loc_advance_slot(fs, &fs->cursor, 1);
     }
 
     return RINGFS_EMPTY;
@@ -447,7 +532,9 @@ int ringfs_discard(struct ringfs *fs)
 {
     while (!_loc_equal(&fs->read, &fs->cursor)) {
         _slot_set_status(fs, &fs->read, SLOT_GARBAGE);
-        _loc_advance_slot(fs, &fs->read);
+        int data_length = 0;
+        _slot_get_data_length(fs, &fs->read, &data_length);
+        _loc_advance_slot(fs, &fs->read, _size_to_number_of_slots(fs, data_length));
     }
 
     return RINGFS_OK;
@@ -462,7 +549,13 @@ int ringfs_item_discard(struct ringfs *fs)
     if (_slot_set_status(fs, &fs->read, SLOT_GARBAGE) == -1) {
         return RINGFS_ERR;
     }
-    _loc_advance_slot(fs, &fs->read);
+        
+    int data_length = 0;
+    if (_slot_get_data_length(fs, &fs->read, &data_length) == -1) {
+        return RINGFS_ERR;
+    }
+    
+    _loc_advance_slot(fs, &fs->read, _size_to_number_of_slots(fs, data_length));
 
     return RINGFS_OK;
 }
@@ -501,21 +594,24 @@ void ringfs_dump(FILE *stream, struct ringfs *fs)
         fprintf(stream, "[%04d] [v=0x%08"PRIx32"] [%-10s] ",
                 sector, header.version, description);
 
-        for (int slot=0; slot<fs->slots_per_sector; slot++) {
+        for (int slot=0; slot<fs->slots_per_sector; ) {
             struct ringfs_loc loc = { sector, slot };
-            uint32_t status;
-            if (_slot_get_status(fs, &loc, &status) == -1)
+            struct slot_header header = {0,};
+            //uint32_t status;
+            //_slot_get_status(fs, &loc, &status);
+            if (_slot_get_header(fs, &loc, &header) == -1)
             {
                 return;
             }
 
-            switch (status) {
+            switch (header.status) {
                 case SLOT_ERASED: description = "E"; break;
                 case SLOT_RESERVED: description = "R"; break;
                 case SLOT_VALID: description = "V"; break;
                 case SLOT_GARBAGE: description = "G"; break;
                 default: description = "?"; break;
             }
+            slot += _size_to_number_of_slots(fs, header.data_length);
 
             fprintf(stream, "%s", description);
         }
