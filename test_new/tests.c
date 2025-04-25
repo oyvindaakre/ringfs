@@ -184,7 +184,7 @@ Test(test_suite_ringfs, test_ringfs_scan)
     cr_assert(ringfs_scan(&fs2) == 0);
 
     /* this is an empty FS, should start with this: */
-    cr_assert_eq(fs2.slots_per_sector, (flash.sector_size-SECTOR_HEADER_SIZE)/(SLOT_HEADER_SIZE+sizeof(object_t)));
+    cr_assert_eq(fs2.slots_per_sector, (flash.sector_size-SECTOR_HEADER_SIZE)/(SLOT_HEADER_SIZE));
     assert_loc_equiv_to_offset(&fs2, &fs2.read, 0);
     assert_loc_equiv_to_offset(&fs2, &fs2.cursor, 0);
     assert_loc_equiv_to_offset(&fs2, &fs2.write, 0);
@@ -427,3 +427,4 @@ Test(test_suite_ringfs, test_ringfs_overflow)
 
 
 /* vim: set ts=4 sw=4 et: */
+

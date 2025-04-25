@@ -206,7 +206,7 @@ void ringfs_init(struct ringfs *fs, struct ringfs_flash_partition *flash, uint32
 
     /* Precalculate commonly used values. */
     fs->slots_per_sector = (fs->flash->sector_size - sizeof(struct sector_header)) /
-                           (sizeof(struct slot_header) + fs->object_size);
+                           (sizeof(struct slot_header));
 }
 
 int ringfs_format(struct ringfs *fs)
