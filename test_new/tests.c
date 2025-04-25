@@ -265,8 +265,8 @@ Test(test_suite_ringfs, test_ringfs_append)
     }
 }
 
-#if 0
-START_TEST(test_ringfs_discard)
+
+Test(test_suite_ringfs, test_ringfs_discard)
 {
     printf("# test_ringfs_discard\n");
 
@@ -310,9 +310,9 @@ START_TEST(test_ringfs_discard)
     assert_loc_equiv_to_offset(&fs, &fs.write, 4);
     assert_scan_integrity(&fs);
 }
-END_TEST
 
-START_TEST(test_ringfs_capacity)
+
+Test(test_suite_ringfs, test_ringfs_capacity)
 {
     printf("# test_ringfs_capacity\n");
 
@@ -323,9 +323,9 @@ START_TEST(test_ringfs_capacity)
     int sectors = flash.sector_count;
     cr_assert_eq(ringfs_capacity(&fs), (sectors-1) * slots_per_sector);
 }
-END_TEST
 
-START_TEST(test_ringfs_count)
+
+Test(test_suite_ringfs, test_ringfs_count)
 {
     printf("# test_ringfs_count\n");
 
@@ -389,9 +389,9 @@ START_TEST(test_ringfs_count)
     fs.write = (struct ringfs_loc) { 0, 0 };
     cr_assert_eq(ringfs_count_estimate(&fs), 1);
 }
-END_TEST
 
-START_TEST(test_ringfs_overflow)
+
+Test(test_suite_ringfs, test_ringfs_overflow)
 {
     printf("# test_ringfs_overflow\n");
 
@@ -424,42 +424,6 @@ START_TEST(test_ringfs_overflow)
         assert_scan_integrity(&fs);
     }
 }
-END_TEST
 
-Suite *ringfs_suite(void)
-{
-    Suite *s = suite_create ("ringfs");
-    TCase *tc;
-
-    tc = tcase_create("flashsim");
-    tcase_add_test(tc, test_flashsim);
-    suite_add_tcase(s, tc);
-
-    tc = tcase_create("ringfs");
-    tcase_add_checked_fixture(tc, fixture_flashsim_setup, fixture_flashsim_teardown);
-    tcase_add_test(tc, test_ringfs_format);
-    tcase_add_test(tc, test_ringfs_scan);
-    tcase_add_test(tc, test_ringfs_append);
-    tcase_add_test(tc, test_ringfs_discard);
-    tcase_add_test(tc, test_ringfs_capacity);
-    tcase_add_test(tc, test_ringfs_count);
-    tcase_add_test(tc, test_ringfs_overflow);
-    suite_add_tcase(s, tc);
-
-    return s;
-}
-
-int main()
-{
-    int number_failed;
-    Suite *s = ringfs_suite();
-    SRunner *sr = srunner_create(s);
-    srunner_run_all(sr, CK_NORMAL);
-    number_failed = srunner_ntests_failed(sr);
-    srunner_free(sr);
-    return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
-}
 
 /* vim: set ts=4 sw=4 et: */
-
-#endif
