@@ -208,8 +208,8 @@ Test(test_suite_ringfs, test_ringfs_scan)
     printf("## ringfs_scan()\n");
     cr_assert(ringfs_scan(&fs3) != 0);
 }
-#if 0
-START_TEST(test_ringfs_append)
+
+Test(test_suite_ringfs, test_ringfs_append)
 {
     printf("# test_ringfs_append\n");
 
@@ -264,8 +264,8 @@ START_TEST(test_ringfs_append)
         cr_assert_eq(obj, 0x11*(i+1));
     }
 }
-END_TEST
 
+#if 0
 START_TEST(test_ringfs_discard)
 {
     printf("# test_ringfs_discard\n");
