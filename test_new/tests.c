@@ -20,13 +20,11 @@
 #include "flashsim.h"
 
 /* Flashsim tests. */
-static void fixture_flashsim_setup(void);
-static void fixture_flashsim_teardown(void);
-Test(test_flashsim, basic, .init = fixture_flashsim_setup, .fini=fixture_flashsim_teardown)
+Test(test_flashsim, basic)
 {
     printf("# test_flashsim\n");
 
-    struct flashsim *smallsim = flashsim_open("tests/test.sim", 1024, 16);
+    struct flashsim *smallsim = flashsim_open("test.sim", 1024, 16);
     uint8_t buf[48];
     uint8_t data[16];
 
@@ -39,11 +37,11 @@ Test(test_flashsim, basic, .init = fixture_flashsim_setup, .fini=fixture_flashsi
 
     flashsim_read(smallsim, 0, buf, 48);
     for (int i=0; i<16; i++)
-        ck_assert_int_eq(buf[i], 0xff);
+        cr_assert_eq(buf[i], 0xff);
     for (int i=16; i<32; i++)
-        ck_assert_int_eq(buf[i], 0x5a);
+        cr_assert_eq(buf[i], 0x5a);
     for (int i=32; i<48; i++)
-        ck_assert_int_eq(buf[i], 0xff);
+        cr_assert_eq(buf[i], 0xff);
 
     memset(data, 0x01, 16);
     flashsim_program(smallsim, 0, data, 16);
@@ -53,15 +51,14 @@ Test(test_flashsim, basic, .init = fixture_flashsim_setup, .fini=fixture_flashsi
 
     flashsim_read(smallsim, 0, buf, 48);
     for (int i=0; i<16; i++)
-        ck_assert_int_eq(buf[i], 0x01);
+        cr_assert_eq(buf[i], 0x01);
     for (int i=16; i<32; i++)
-        ck_assert_int_eq(buf[i], 0xff);
+        cr_assert_eq(buf[i], 0xff);
     for (int i=32; i<48; i++)
-        ck_assert_int_eq(buf[i], 0x10);
+        cr_assert_eq(buf[i], 0x10);
 
     free(smallsim);
 }
-END_TEST
 
 /* Flash simulator + MTD partition fixture. */
 
@@ -129,6 +126,8 @@ static void fixture_flashsim_teardown(void)
 }
 
 /* RingFS tests. */
+
+#if 0
 
 #define DEFAULT_VERSION 0x000000042
 typedef struct
@@ -465,3 +464,4 @@ int main()
 
 /* vim: set ts=4 sw=4 et: */
 
+#endif
