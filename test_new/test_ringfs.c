@@ -368,7 +368,7 @@ Test(test_suite_ringfs, test_ringfs_capacity)
     struct ringfs fs;
     ringfs_init(&fs, &flash, DEFAULT_VERSION, sizeof(object_t));
 
-    int slots_per_sector = (flash.sector_size-SECTOR_HEADER_SIZE)/(SLOT_HEADER_SIZE+sizeof(object_t));
+    int slots_per_sector = (flash.sector_size-SECTOR_HEADER_SIZE)/(SLOT_HEADER_SIZE);
     int sectors = flash.sector_count;
     cr_assert_eq(ringfs_capacity(&fs), (sectors-1) * slots_per_sector);
 }
