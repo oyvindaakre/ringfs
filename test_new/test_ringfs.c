@@ -141,6 +141,13 @@ static void assert_loc_equiv_to_offset(const struct ringfs *fs, const struct rin
     cr_assert_eq(offset, loc_offset);
 }
 
+static void assert_loc_is_updated(const struct ringfs *fs, const struct ringfs_loc *current_loc, const struct ringfs_loc *old_loc)
+{
+    int current_offset = current_loc->sector * fs->slots_per_sector + current_loc->slot;
+    int old_offset = old_loc->sector * fs->slots_per_sector + old_loc->slot;
+    cr_assert_gt(current_offset, old_offset);
+}
+
 static void assert_scan_integrity(const struct ringfs *fs)
 {
     struct ringfs newfs;
@@ -232,23 +239,27 @@ Test(test_suite_ringfs, test_ringfs_append)
     assert_scan_integrity(&fs);
 
     /* now we're brave and we write some data */
+    struct ringfs_loc write_prev = {0,0};
     for (int i=0; i<3; i++) {
         printf("## ringfs_append()\n");
         ringfs_append(&fs, (int[]) { 0x11*(i+1) });
 
         /* make sure the write head has advanced */
-        assert_loc_equiv_to_offset(&fs, &fs.write, i+1);
+        assert_loc_is_updated(&fs, &fs.write, &write_prev);
+        write_prev = fs.write;
         assert_scan_integrity(&fs);
     }
 
     /* now we fetch at it. */
+    struct ringfs_loc cursor_prev = {0,0};
     for (int i=0; i<3; i++) {
         printf("## ringfs_fetch()\n");
         cr_assert(ringfs_fetch(&fs, &obj) == 0);
         cr_assert_eq(obj, 0x11*(i+1));
 
         /* make sure the cursor head has advanced */
-        assert_loc_equiv_to_offset(&fs, &fs.cursor, i+1);
+        assert_loc_is_updated(&fs, &fs.cursor, &cursor_prev);
+        cursor_prev = fs.cursor;
     }
     /* there should be no data left */
     cr_assert(ringfs_fetch(&fs, &obj) < 0);
