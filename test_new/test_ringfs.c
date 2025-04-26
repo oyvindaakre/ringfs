@@ -130,7 +130,7 @@ static void fixture_flashsim_teardown(void)
 #define DEFAULT_VERSION 0x000000042
 typedef struct
 {
-    uint8_t data[8];
+    int32_t data[2];
 } object_t;
 #define SECTOR_HEADER_SIZE 8
 #define SLOT_HEADER_SIZE 8
@@ -221,7 +221,7 @@ Test(test_suite_ringfs, test_ringfs_append)
     printf("# test_ringfs_append\n");
 
     /* first format a filesystem */
-    int obj;
+    object_t obj;
     struct ringfs fs;
     printf("## ringfs_init()\n");
     ringfs_init(&fs, &flash, DEFAULT_VERSION, sizeof(object_t));
@@ -255,7 +255,7 @@ Test(test_suite_ringfs, test_ringfs_append)
     for (int i=0; i<3; i++) {
         printf("## ringfs_fetch()\n");
         cr_assert(ringfs_fetch(&fs, &obj) == 0);
-        cr_assert_eq(obj, 0x11*(i+1));
+        cr_assert_eq(obj.data[0], 0x11*(i+1));
 
         /* make sure the cursor head has advanced */
         assert_loc_is_updated(&fs, &fs.cursor, &cursor_prev);
@@ -272,7 +272,7 @@ Test(test_suite_ringfs, test_ringfs_append)
     for (int i=0; i<3; i++) {
         printf("## ringfs_fetch()\n");
         cr_assert(ringfs_fetch(&fs, &obj) == 0);
-        cr_assert_eq(obj, 0x11*(i+1));
+        cr_assert_eq(obj.data[0], 0x11*(i+1));
     }
 }
 
@@ -312,7 +312,7 @@ Test(test_suite_ringfs, test_ringfs_discard)
     for (int i=2; i<4; i++) {
         printf("## ringfs_fetch()\n");
         cr_assert(ringfs_fetch(&fs, &obj) == 0);
-        cr_assert_eq(obj, 0x11*(i+1));
+        cr_assert_eq(obj.data[0], 0x11*(i+1));
     }
     /* discard them */
     cr_assert(ringfs_discard(&fs) == 0);
