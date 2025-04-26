@@ -324,7 +324,7 @@ int ringfs_scan(struct ringfs *fs)
         if (header.status == SLOT_ERASED)
             break;
 
-        _loc_advance_slot(fs, &fs->write, 1);
+        _loc_advance_slot(fs, &fs->write, _size_to_number_of_slots(fs, header.data_length));
     }
     /* If the sector was full, we're at the beginning of a FREE sector now. */
 
@@ -341,10 +341,23 @@ int ringfs_scan(struct ringfs *fs)
         {
             return RINGFS_ERR;
         }
+        int slots_to_advance = 1;
+        switch (header.status)
+        {
+            case SLOT_VALID:
+            case SLOT_GARBAGE:
+            case SLOT_RESERVED:
+                slots_to_advance = _size_to_number_of_slots(fs, header.data_length);
+                break;
+
+            default:
+                slots_to_advance = 1;
+                break;
+        }
         if (header.status == SLOT_VALID)
             break;
 
-        _loc_advance_slot(fs, &fs->read, 1);
+        _loc_advance_slot(fs, &fs->read, slots_to_advance);
     }
 
     /* Move the read cursor to the read head position. */
