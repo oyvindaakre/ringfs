@@ -394,14 +394,23 @@ int ringfs_count_exact(struct ringfs *fs)
             return RINGFS_ERR;
         }
 
-        int advance = 1;
-        if (header.status == SLOT_VALID)
+        int slots_to_advance = 1;
+        switch (header.status)
         {
-            count++;
-            advance = _size_to_number_of_slots(fs, header.data_length);
+            case SLOT_VALID:
+                count++;
+                //no break
+            case SLOT_GARBAGE:
+            case SLOT_RESERVED:
+                slots_to_advance = _size_to_number_of_slots(fs, header.data_length);
+                break;
+
+            default:
+                slots_to_advance = 1;
+                break;
         }
 
-        _loc_advance_slot(fs, &loc, advance);
+        _loc_advance_slot(fs, &loc, slots_to_advance);
     }
 
     return count;
