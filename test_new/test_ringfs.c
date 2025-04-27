@@ -440,12 +440,15 @@ Test(test_suite_ringfs, test_ringfs_overflow)
     ringfs_init(&fs, &flash, DEFAULT_VERSION, sizeof(object_t));
     ringfs_format(&fs);
 
-    int capacity = ringfs_capacity(&fs);
+    int slot_capacity = ringfs_capacity(&fs);
+    int slots_per_sector = slot_capacity / (fs.flash->sector_count - 1);
+    int max_objects_per_sector = slots_per_sector / ((SLOT_HEADER_SIZE + sizeof(object_t)) / fs.object_size);
+    int max_objects = (fs.flash->sector_count - 1) * max_objects_per_sector;
 
     printf("## fill filesystem to the brim\n");
-    for (int i=0; i<capacity; i++)
+    for (int i=0; i<max_objects; i++)
         ringfs_append(&fs, (int[]) { i });
-    cr_assert_eq(ringfs_count_exact(&fs), capacity);
+    cr_assert_eq(ringfs_count_exact(&fs), max_objects);
     assert_scan_integrity(&fs);
 
     /* won't hurt to stress it a little bit! */
@@ -453,14 +456,14 @@ Test(test_suite_ringfs, test_ringfs_overflow)
         printf("## add one more object\n");
         ringfs_append(&fs, (int[]) { 0x42 });
         /* should kill one entire sector to make space */
-        cr_assert_eq(ringfs_count_exact(&fs), capacity - fs.slots_per_sector + 1);
+        cr_assert_eq(ringfs_count_exact(&fs), max_objects - max_objects_per_sector + 1);
         assert_scan_integrity(&fs);
 
         printf("## fill back up to the sector capacity\n");
-        for (int i=0; i<fs.slots_per_sector-1; i++)
+        for (int i=0; i<max_objects_per_sector-1; i++)
             ringfs_append(&fs, (int[]) { i });
 
-        cr_assert_eq(ringfs_count_exact(&fs), capacity);
+        cr_assert_eq(ringfs_count_exact(&fs), max_objects);
         assert_scan_integrity(&fs);
     }
 }
