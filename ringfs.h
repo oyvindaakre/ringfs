@@ -86,6 +86,24 @@ struct ringfs {
     struct ringfs_loc cursor;
 };
 
+enum ringfs_return_value {
+    RINGFS_OK = 0,
+    /** Generic internal error */
+    RINGFS_ERR = -1,
+    /** The filesystem contains no data records */
+    RINGFS_EMPTY = -2,
+    /** Invalid parameter passed to function */
+    RINGFS_INVALID_PARAMETER = -3,
+    /** A deprecated API was called */
+    RINGFS_DEPRECATED = -4,
+    /** Data record is corrupted */
+    RINGFS_CORRUPTED = -5,
+    /** File system contains records with incompatible version */
+    RINGFS_INCOMPATIBLE_VERSION = -6,
+    /** The destination buffer is not large enough for the read data */
+    RINGFS_DESTINATION_MEM_INSUFFICIENT = -7
+};
+
 /**
  * Initialize a RingFS instance. Must be called before the instance can be used
  * with the other ringfs_* functions.
@@ -105,7 +123,8 @@ void ringfs_init(struct ringfs *fs, struct ringfs_flash_partition *flash, uint32
  * a lowlevel storage erase.
  *
  * @param fs Initialized RingFS instance.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK success
+ * @returns RINGFS_ERR on failure
  */
 int ringfs_format(struct ringfs *fs);
 
@@ -113,7 +132,10 @@ int ringfs_format(struct ringfs *fs);
  * Scan the flash memory for a valid filesystem.
  *
  * @param fs Initialized RingFS instance.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK success
+ * @returns RINGFS_CORRUPTED
+ * @returns RINGFS_INCOMPATIBLE_VERSION
+ * @returns RINGFS_ERR otherwise
  */
 int ringfs_scan(struct ringfs *fs);
 
@@ -121,7 +143,7 @@ int ringfs_scan(struct ringfs *fs);
  * Calculate maximum RingFS capacity.
  *
  * @param fs Initialized RingFS instance.
- * @returns Maximum capacity on success, -1 on failure.
+ * @returns Maximum capacity on success, RINGFS_ERR on failure.
  */
 int ringfs_capacity(struct ringfs *fs);
 
@@ -139,7 +161,7 @@ int ringfs_count_estimate(struct ringfs *fs);
  * Runs in O(n).
  *
  * @param fs Initialized RingFS instance.
- * @returns Exact object count on success, -1 on failure.
+ * @returns Exact object count on success, RINGFS_ERR on failure.
  */
 int ringfs_count_exact(struct ringfs *fs);
 
@@ -149,7 +171,10 @@ int ringfs_count_exact(struct ringfs *fs);
  *
  * @param fs Initialized RingFS instance.
  * @param object Object to be stored.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_INVALID_PARAMETER if size is invalid
+ * @returns RINGFS_CORRUPTED if ring is corrupted
+ * @returns RINGFS_ERR otherwise
  */
 int ringfs_append(struct ringfs *fs, const void *object);
 
@@ -161,7 +186,10 @@ int ringfs_append(struct ringfs *fs, const void *object);
  * @param fs Initialized RingFS instance.
  * @param object Object to be stored.
  * @param size Size of the object in bytes.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_INVALID_PARAMETER if size is invalid
+ * @returns RINGFS_CORRUPTED if ring is corrupted
+ * @returns RINGFS_ERR otherwise
  */
 int ringfs_append_ex(struct ringfs *fs, const void *object, int size);
 
@@ -171,7 +199,9 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size);
  *
  * @param fs Initialized RingFS instance.
  * @param object Buffer to store retrieved object.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_INVALID_PARAMETER if size is invalid
+ * @returns RINGFS_ERR otherwise
  */
 int ringfs_fetch(struct ringfs *fs, void *object);
 
@@ -183,7 +213,9 @@ int ringfs_fetch(struct ringfs *fs, void *object);
  * @param fs Initialized RingFS instance.
  * @param object Buffer to store retrieved object.
  * @param size Size of the object in bytes.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_INVALID_PARAMETER if size is invalid
+ * @returns RINGFS_ERR otherwise
  */
 int ringfs_fetch_ex(struct ringfs *fs, void *object, int size);
 
@@ -191,17 +223,29 @@ int ringfs_fetch_ex(struct ringfs *fs, void *object, int size);
  * Discard all fetched objects up to the read cursor.
  *
  * @param fs Initialized RingFS instance.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_ERR on failure
  */
 int ringfs_discard(struct ringfs *fs);
 
+/**
+ * Discards the item pointed by the read pointer,
+ * unless the read pointer points to the write pointer which
+ * means the ring is empty.
+ *
+ * @param fs Initialized RingFS instance.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_EMPTY if ring is empty
+ * @returns RINGFS_ERR otherwise
+ */
 int ringfs_item_discard(struct ringfs *fs);
 
 /**
  * Rewind the read cursor back to the oldest object.
  *
  * @param fs Initialized RingFS instance.
- * @returns Zero on success, -1 on failure.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_ERR on failure
  */
 int ringfs_rewind(struct ringfs *fs);
 
@@ -223,3 +267,4 @@ void ringfs_dump(FILE *stream, struct ringfs *fs);
 #endif
 
 /* vim: set ts=4 sw=4 et: */
+
