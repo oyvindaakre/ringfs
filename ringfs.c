@@ -68,12 +68,17 @@ static int _sector_free(struct ringfs *fs, int sector, uint32_t current_status)
     int sector_addr = _sector_address(fs, sector);
     if (current_status != SECTOR_ERASING && current_status != SECTOR_FORMATTING)
         _sector_set_status(fs, sector, SECTOR_ERASING);
-    fs->flash->sector_erase(fs->flash, sector_addr);
-    fs->flash->program(fs->flash,
+    if (fs->flash->sector_erase(fs->flash, sector_addr) == -1)
+    {
+        return -1;
+    }
+    if (fs->flash->program(fs->flash,
             sector_addr + offsetof(struct sector_header, version),
-            &fs->version, sizeof(fs->version));
-    _sector_set_status(fs, sector, SECTOR_FREE);
-    return 0;
+            &fs->version, sizeof(fs->version)) == -1)
+    {
+        return -1;
+    }
+    return _sector_set_status(fs, sector, SECTOR_FREE);
 }
 
 /**
@@ -203,7 +208,10 @@ int ringfs_scan(struct ringfs *fs)
 
         /* Read sector header. */
         struct sector_header header;
-        fs->flash->read(fs->flash, addr, &header, sizeof(header));
+        if (fs->flash->read(fs->flash, addr, &header, sizeof(header)) == -1)
+        {
+            return RINGFS_ERR;
+        }
 
         /* Detect partially-formatted partitions. */
         if (header.status == SECTOR_FORMATTING) {
@@ -382,9 +390,12 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
     _slot_set_status(fs, &fs->write, SLOT_RESERVED);
 
     /* Write object. */
-    fs->flash->program(fs->flash,
+    if (fs->flash->program(fs->flash,
             _slot_address(fs, &fs->write) + sizeof(struct slot_header),
-            object, size);
+            object, size) == -1)
+    {
+        return RINGFS_ERR;
+    }
 
     /* Commit write. */
     _slot_set_status(fs, &fs->write, SLOT_VALID);
@@ -416,9 +427,12 @@ int ringfs_fetch_ex(struct ringfs *fs, void *object, int size)
         }
 
         if (status == SLOT_VALID) {
-            fs->flash->read(fs->flash,
+            if (fs->flash->read(fs->flash,
                     _slot_address(fs, &fs->cursor) + sizeof(struct slot_header),
-                    object, size);
+                    object, size) == -1)
+            {
+                return RINGFS_ERR;
+            }
             _loc_advance_slot(fs, &fs->cursor);
             return RINGFS_OK;
         }
