@@ -86,6 +86,24 @@ struct ringfs {
     struct ringfs_loc cursor;
 };
 
+enum ringfs_return_value {
+    RINGFS_OK = 0,
+    /** Generic internal error */
+    RINGFS_ERR = -1,
+    /** The filesystem contains no data records */
+    RINGFS_EMPTY = -2,
+    /** Invalid parameter passed to function */
+    RINGFS_INVALID_PARAMETER = -3,
+    /** A deprecated API was called */
+    RINGFS_DEPRECATED = -4,
+    /** Data record is corrupted */
+    RINGFS_CORRUPTED = -5,
+    /** File system contains records with incompatible version */
+    RINGFS_INCOMPATIBLE_VERSION = -6,
+    /** The destination buffer is not large enough for the read data */
+    RINGFS_DESTINATION_MEM_INSUFFICIENT = -7
+};
+
 /**
  * Initialize a RingFS instance. Must be called before the instance can be used
  * with the other ringfs_* functions.
@@ -223,3 +241,4 @@ void ringfs_dump(FILE *stream, struct ringfs *fs);
 #endif
 
 /* vim: set ts=4 sw=4 et: */
+

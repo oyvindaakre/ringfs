@@ -165,12 +165,12 @@ int ringfs_format(struct ringfs *fs)
     /* Mark all sectors to prevent half-erased filesystems. */
     for (int sector=0; sector<fs->flash->sector_count; sector++)
         if (_sector_set_status(fs, sector, SECTOR_FORMATTING) == -1)
-            return -1;
+            return RINGFS_ERR;
 
     /* Erase, update version, mark as free. */
     for (int sector=0; sector<fs->flash->sector_count; sector++)
         if (_sector_free(fs, sector, SECTOR_FORMATTING) == -1)
-            return -1;
+            return RINGFS_ERR;
 
     /* Start reading & writing at the first sector. */
     fs->read.sector = 0;
@@ -180,7 +180,7 @@ int ringfs_format(struct ringfs *fs)
     fs->cursor.sector = 0;
     fs->cursor.slot = 0;
 
-    return 0;
+    return RINGFS_OK;
 }
 
 int ringfs_scan(struct ringfs *fs)
@@ -208,7 +208,7 @@ int ringfs_scan(struct ringfs *fs)
         /* Detect partially-formatted partitions. */
         if (header.status == SECTOR_FORMATTING) {
             LOG(fs, "ringfs_scan: partially formatted partition");
-            return -1;
+            return RINGFS_ERR;
         }
 
         /* Detect and fix partially erased sectors. */
@@ -220,14 +220,14 @@ int ringfs_scan(struct ringfs *fs)
         /* Detect corrupted sectors. */
         if (header.status != SECTOR_FREE && header.status != SECTOR_IN_USE) {
             LOG(fs, "ringfs_scan: corrupted sector %d\r\n", sector);
-            return -1;
+            return RINGFS_CORRUPTED;
         }
 
         /* Detect obsolete versions. We can't do this earlier because the version
          * could have been invalid due to a partial erase. */
         if (header.version != fs->version) {
             LOG(fs, "ringfs_scan: incompatible version 0x%08"PRIx32"", header.version);
-            return -1;
+            return RINGFS_INCOMPATIBLE_VERSION;
         }
 
         /* Record the presence of a FREE sector. */
@@ -250,7 +250,7 @@ int ringfs_scan(struct ringfs *fs)
     /* Detect the lack of a FREE sector. */
     if (!free_seen) {
         LOG(fs, "ringfs_scan: invariant violated: no FREE sector found");
-        return -1;
+        return RINGFS_ERR;
     }
 
     /* Start writing at the first sector if the filesystem is empty. */
@@ -263,7 +263,10 @@ int ringfs_scan(struct ringfs *fs)
     fs->write.slot = 0;
     while (fs->write.sector == write_sector) {
         uint32_t status;
-        _slot_get_status(fs, &fs->write, &status);
+        if (_slot_get_status(fs, &fs->write, &status) == -1)
+        {
+            return RINGFS_ERR;
+        }
         if (status == SLOT_ERASED)
             break;
 
@@ -278,7 +281,10 @@ int ringfs_scan(struct ringfs *fs)
     fs->read.slot = 0;
     while (!_loc_equal(&fs->read, &fs->write)) {
         uint32_t status;
-        _slot_get_status(fs, &fs->read, &status);
+        if (_slot_get_status(fs, &fs->read, &status) == -1)
+        {
+            return RINGFS_ERR;
+        }
         if (status == SLOT_VALID)
             break;
 
@@ -288,7 +294,7 @@ int ringfs_scan(struct ringfs *fs)
     /* Move the read cursor to the read head position. */
     fs->cursor = fs->read;
 
-    return 0;
+    return RINGFS_OK;
 }
 
 int ringfs_capacity(struct ringfs *fs)
@@ -312,7 +318,10 @@ int ringfs_count_exact(struct ringfs *fs)
     struct ringfs_loc loc = fs->read;
     while (!_loc_equal(&loc, &fs->write)) {
         uint32_t status;
-        _slot_get_status(fs, &loc, &status);
+        if (_slot_get_status(fs, &loc, &status) == -1)
+        {
+            return RINGFS_ERR;
+        }
 
         if (status == SLOT_VALID)
             count++;
@@ -331,7 +340,7 @@ int ringfs_append(struct ringfs *fs, const void *object)
 int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
 {
     if (size > fs->object_size || size < 0) {
-        return -1;
+        return RINGFS_INVALID_PARAMETER;
     }
 
     uint32_t status;
@@ -366,7 +375,7 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
         _sector_set_status(fs, fs->write.sector, SECTOR_IN_USE);
     } else if (status != SECTOR_IN_USE) {
         LOG(fs, "ringfs_append: corrupted filesystem");
-        return -1;
+        return RINGFS_CORRUPTED;
     }
 
     /* Preallocate slot. */
@@ -383,7 +392,7 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
     /* Advance the write head. */
     _loc_advance_slot(fs, &fs->write);
 
-    return 0;
+    return RINGFS_OK;
 }
 
 int ringfs_fetch(struct ringfs *fs, void *object)
@@ -394,27 +403,30 @@ int ringfs_fetch(struct ringfs *fs, void *object)
 int ringfs_fetch_ex(struct ringfs *fs, void *object, int size)
 {
     if (size > fs->object_size || size < 0) {
-        return -1;
+        return RINGFS_INVALID_PARAMETER;
     }
 
     /* Advance forward in search of a valid slot. */
     while (!_loc_equal(&fs->cursor, &fs->write)) {
         uint32_t status;
 
-        _slot_get_status(fs, &fs->cursor, &status);
+        if (_slot_get_status(fs, &fs->cursor, &status) == -1)
+        {
+            return RINGFS_ERR;
+        }
 
         if (status == SLOT_VALID) {
             fs->flash->read(fs->flash,
                     _slot_address(fs, &fs->cursor) + sizeof(struct slot_header),
                     object, size);
             _loc_advance_slot(fs, &fs->cursor);
-            return 0;
+            return RINGFS_OK;
         }
 
         _loc_advance_slot(fs, &fs->cursor);
     }
 
-    return -1;
+    return RINGFS_EMPTY;
 }
 
 int ringfs_discard(struct ringfs *fs)
@@ -424,7 +436,7 @@ int ringfs_discard(struct ringfs *fs)
         _loc_advance_slot(fs, &fs->read);
     }
 
-    return 0;
+    return RINGFS_OK;
 }
 
 int ringfs_item_discard(struct ringfs *fs)
@@ -432,13 +444,13 @@ int ringfs_item_discard(struct ringfs *fs)
         _slot_set_status(fs, &fs->read, SLOT_GARBAGE);
         _loc_advance_slot(fs, &fs->read);
 
-    return 0;
+    return RINGFS_OK;
 }
 
 int ringfs_rewind(struct ringfs *fs)
 {
     fs->cursor = fs->read;
-    return 0;
+    return RINGFS_OK;
 }
 
 void ringfs_dump(FILE *stream, struct ringfs *fs)
@@ -472,7 +484,10 @@ void ringfs_dump(FILE *stream, struct ringfs *fs)
         for (int slot=0; slot<fs->slots_per_sector; slot++) {
             struct ringfs_loc loc = { sector, slot };
             uint32_t status;
-            _slot_get_status(fs, &loc, &status);
+            if (_slot_get_status(fs, &loc, &status) == -1)
+            {
+                return;
+            }
 
             switch (status) {
                 case SLOT_ERASED: description = "E"; break;
@@ -496,3 +511,4 @@ void ringfs_dump(FILE *stream, struct ringfs *fs)
  */
 
 /* vim: set ts=4 sw=4 et: */
+
