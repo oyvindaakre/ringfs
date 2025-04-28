@@ -472,5 +472,56 @@ Test(test_suite_ringfs, test_ringfs_overflow)
 }
 
 
+Test(test_suite_ringfs, test_ringfs_append_and_fetch_objects_of_different_size)
+{
+    struct ringfs fs;
+    const int SLOT_SIZE = 8; // Data granularity in the flash. 8 bytes is the smallest possible value
+    ringfs_init(&fs, &flash, DEFAULT_VERSION, SLOT_SIZE);
+    ringfs_format(&fs);
+
+    enum data_type {DATA_HELLO_WORLD, DATA_INTEGER};
+    char hello_world[32] = "Hello world!";
+    uint8_t integer = 42;
+
+    const int hello_world_length = strlen(hello_world);
+    cr_assert(ringfs_append_var(&fs, hello_world, hello_world_length, DATA_HELLO_WORLD) == 0);
+    cr_assert(ringfs_append_var(&fs, &integer, sizeof(integer), DATA_INTEGER) == 0);
+    cr_assert_eq(ringfs_count_exact(&fs), 2);
+
+    // Define a data structure for records that are read back (an example)
+    struct fifo_data_type
+    {
+        uint8_t type;
+        union {
+            char message[32];
+            uint8_t integer;
+        } data;
+    };
+
+    struct fifo_data_type fifo_data = {0,};
+    uint16_t fifo_data_size = sizeof(fifo_data.data);
+
+    // Now read back the first record
+    cr_assert(ringfs_fetch_var(&fs, &fifo_data.data, &fifo_data_size, &fifo_data.type) == 0);
+    cr_assert_eq(fifo_data.type, DATA_HELLO_WORLD);
+    cr_assert_eq(fifo_data_size, hello_world_length);
+    cr_assert_arr_eq(fifo_data.data.message, hello_world, hello_world_length);
+
+    memset(&fifo_data, 0, sizeof(fifo_data));
+    fifo_data_size = sizeof(fifo_data.data);
+
+    // Now read back the second record
+    cr_assert(ringfs_fetch_var(&fs, &fifo_data.data, &fifo_data_size, &fifo_data.type) == 0);
+    cr_assert_eq(fifo_data.type, DATA_INTEGER);
+    cr_assert_eq(fifo_data_size, sizeof(integer));
+    cr_assert_eq(fifo_data.data.integer, integer);
+
+    // Discard read data
+    cr_assert(ringfs_discard(&fs) == 0);
+    // Count is now 0
+    cr_assert_eq(ringfs_count_exact(&fs), 0);
+}
+
+
 /* vim: set ts=4 sw=4 et: */
 

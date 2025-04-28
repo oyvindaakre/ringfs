@@ -510,7 +510,7 @@ int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size, uint
             return RINGFS_ERR;
         }
         _loc_advance_slot(fs, &fs->write, free_slots_in_sector);
-        return ringfs_append_ex(fs, object, size);
+        return ringfs_append_var(fs, object, size, type);
     }
 
     /* Preallocate slot. */
