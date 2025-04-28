@@ -95,9 +95,13 @@ enum slot_status {
     SLOT_GARBAGE  = 0xFF000000, /**< Slot contents discarded and no longer valid. */
 };
 
+#define DATA_TYPE_UNKNOWN (uint8_t)0xFF
+
 struct slot_header {
     uint32_t status;
-    int data_length;
+    uint8_t reserved;
+    uint8_t data_type;
+    uint16_t data_length;
 };
 
 static int _slot_address(struct ringfs *fs, struct ringfs_loc *loc) // TODO handle the block count?
@@ -115,7 +119,7 @@ static int _slot_get_status(struct ringfs *fs, struct ringfs_loc *loc, uint32_t 
 }
 */
 
-static int _slot_get_data_length(struct ringfs *fs, struct ringfs_loc *loc, int *data_length)
+static int _slot_get_data_length(struct ringfs *fs, struct ringfs_loc *loc, uint16_t *data_length)
 {
     return fs->flash->read(fs->flash,
             _slot_address(fs, loc) + offsetof(struct slot_header, data_length),
@@ -420,17 +424,31 @@ int ringfs_append(struct ringfs *fs, const void *object)
 {
     return ringfs_append_ex(fs, object, fs->object_size);
 }
-
 int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
 {
-    if (/*size > fs->object_size || */size < 0) {
+    if (size > UINT16_MAX)
+    {
         return RINGFS_INVALID_PARAMETER;
     }
+    return ringfs_append_var(fs, object, size, DATA_TYPE_UNKNOWN);
+}
 
+struct slot_header slot_header_create(uint32_t status, uint16_t data_length, uint8_t data_type)
+{
+    return (struct slot_header) {
+        .status = status,
+        .data_length = data_length,
+        .data_type = data_type,
+        .reserved = 0xFF
+    };
+}
+
+int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size, uint8_t type)
+{
     int slots_needed = _size_to_number_of_slots(fs, size);
     if (slots_needed > fs->slots_per_sector)
     {
-        return -1;
+        return RINGFS_DESTINATION_MEM_INSUFFICIENT;
     }
 
     uint32_t status;
@@ -444,7 +462,10 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
 
     /* Make sure the next sector is free. */
     int next_sector = (fs->write.sector+1) % fs->flash->sector_count;
-    _sector_get_status(fs, next_sector, &status);
+    if (_sector_get_status(fs, next_sector, &status) == -1)
+    {
+        return RINGFS_ERR;
+    }
     if (status != SECTOR_FREE) {
         /* Next sector must be freed. But first... */
 
@@ -455,14 +476,23 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
             _loc_advance_sector(fs, &fs->cursor);
 
         /* Free the next sector. */
-        _sector_free(fs, next_sector, status);
+        if (_sector_free(fs, next_sector, status) == -1)
+        {
+            return RINGFS_ERR;
+        }
     }
 
     /* Now we can make sure the current write sector is writable. */
-    _sector_get_status(fs, fs->write.sector, &status);
+    if (_sector_get_status(fs, fs->write.sector, &status) == -1)
+    {
+        return RINGFS_ERR;
+    }
     if (status == SECTOR_FREE) {
         /* Free sector. Mark as used. */
-        _sector_set_status(fs, fs->write.sector, SECTOR_IN_USE);
+        if (_sector_set_status(fs, fs->write.sector, SECTOR_IN_USE) == -1)
+        {
+            return RINGFS_ERR;
+        }
     } else if (status != SECTOR_IN_USE) {
         LOG(fs, "ringfs_append: corrupted filesystem");
         return RINGFS_CORRUPTED;
@@ -471,21 +501,27 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
     int free_slots_in_sector = fs->slots_per_sector - fs->write.slot;
     if (slots_needed > free_slots_in_sector)
     {
-        struct slot_header header = {
-            .status = SLOT_GARBAGE,
-            .data_length = _slots_to_max_data_length(fs, free_slots_in_sector),
-        };
-        _slot_set_header(fs, &fs->write, &header);
+        struct slot_header header = slot_header_create(
+                SLOT_GARBAGE,
+                _slots_to_max_data_length(fs, free_slots_in_sector),
+                type);
+        if (_slot_set_header(fs, &fs->write, &header) == -1)
+        {
+            return RINGFS_ERR;
+        }
         _loc_advance_slot(fs, &fs->write, free_slots_in_sector);
         return ringfs_append_ex(fs, object, size);
     }
 
     /* Preallocate slot. */
-    struct slot_header header = {
-        .status = SLOT_RESERVED,
-        .data_length = size,
-    };
-    _slot_set_header(fs, &fs->write, &header);
+    struct slot_header header = slot_header_create(
+            SLOT_RESERVED,
+            size,
+            type);
+    if (_slot_set_header(fs, &fs->write, &header) == -1)
+    {
+        return RINGFS_ERR;
+    }
     volatile int slot_addr = _slot_address(fs, &fs->write);
     printf("write.slot=%d, write.sector=%d, slot addr=%d\r\n", fs->write.slot, fs->write.sector, slot_addr);
     //_slot_set_status(fs, &fs->write, SLOT_RESERVED);
@@ -499,7 +535,10 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
     }
 
     /* Commit write. */
-    _slot_set_status(fs, &fs->write, SLOT_VALID);
+    if (_slot_set_status(fs, &fs->write, SLOT_VALID) == -1)
+    {
+        return RINGFS_ERR;
+    }
 
     /* Advance the write head. */
     _loc_advance_slot(fs, &fs->write, slots_needed);
@@ -514,10 +553,17 @@ int ringfs_fetch(struct ringfs *fs, void *object)
 
 int ringfs_fetch_ex(struct ringfs *fs, void *object, int size)
 {
-    if (/*size > fs->object_size ||*/ size < 0) {
+    uint16_t object_size = size;
+    uint8_t type = 0;
+    return ringfs_fetch_var(fs, object, &object_size, &type);
+}
+
+int ringfs_fetch_var(struct ringfs *fs, void *object, uint16_t *size, uint8_t *type)
+{
+    if (!size || !type)
+    {
         return RINGFS_INVALID_PARAMETER;
     }
-
     /* Advance forward in search of a valid slot. */
     while (!_loc_equal(&fs->cursor, &fs->write)) {
         struct slot_header header;
@@ -530,16 +576,18 @@ int ringfs_fetch_ex(struct ringfs *fs, void *object, int size)
         //_slot_get_status(fs, &fs->cursor, &status);
 
         if (status == SLOT_VALID) {
-            if (header.data_length > size)
+            if (header.data_length > *size)
             {
                 return RINGFS_DESTINATION_MEM_INSUFFICIENT;
             }
             if (fs->flash->read(fs->flash,
                     _slot_address(fs, &fs->cursor) + sizeof(struct slot_header),
-                    object, size) == -1)
+                    object, header.data_length) == -1)
             {
                 return RINGFS_ERR;
             }
+            *size = header.data_length;
+            *type = header.data_type;
             _loc_advance_slot(fs, &fs->cursor, _size_to_number_of_slots(fs, header.data_length));
             return RINGFS_OK;
         }
@@ -553,9 +601,16 @@ int ringfs_fetch_ex(struct ringfs *fs, void *object, int size)
 int ringfs_discard(struct ringfs *fs)
 {
     while (!_loc_equal(&fs->read, &fs->cursor)) {
-        _slot_set_status(fs, &fs->read, SLOT_GARBAGE);
-        int data_length = 0;
-        _slot_get_data_length(fs, &fs->read, &data_length);
+        if (_slot_set_status(fs, &fs->read, SLOT_GARBAGE) == -1)
+        {
+            return RINGFS_ERR;
+        }
+        
+        uint16_t data_length = 0;
+        if (_slot_get_data_length(fs, &fs->read, &data_length) == -1)
+        {
+            return RINGFS_ERR;
+        }
         _loc_advance_slot(fs, &fs->read, _size_to_number_of_slots(fs, data_length));
     }
 
@@ -572,7 +627,7 @@ int ringfs_item_discard(struct ringfs *fs)
         return RINGFS_ERR;
     }
         
-    int data_length = 0;
+    uint16_t data_length = 0;
     if (_slot_get_data_length(fs, &fs->read, &data_length) == -1) {
         return RINGFS_ERR;
     }
