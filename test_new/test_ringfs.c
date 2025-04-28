@@ -97,7 +97,10 @@ static void op_log(struct ringfs_flash_partition *flash, const char *fmt, ...)
 }
 
 /*
- * A really small filesystem: 3 slots per sector, 15 slots total.
+ * A really small filesystem: 7 slots per sector, 35 slots total.
+ * Each slot is SLOT_HEADER_SIZE bytes big, so the object capacity
+ * depends on how big objects are inserted. In these tests objects are of
+ * same size as SLOT_HEADER_SIZE, so total object capacity is 15.
  * Has the benefit of causing frequent wraparounds, potentially finding
  * more bugs.
  */
