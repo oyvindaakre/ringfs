@@ -522,6 +522,18 @@ Test(test_suite_ringfs, test_ringfs_append_and_fetch_objects_of_different_size)
     cr_assert_eq(ringfs_count_exact(&fs), 0);
 }
 
-
+Test(test_suite_ringfs, test_ringfs_item_discard)
+{
+    struct ringfs fs;
+    const int SLOT_SIZE = 8;
+    ringfs_init(&fs, &flash, DEFAULT_VERSION, SLOT_SIZE);
+    cr_assert(ringfs_format(&fs) == 0);
+    uint8_t data = 42;
+    cr_assert(ringfs_append(&fs, &data) == RINGFS_OK);
+    cr_assert(ringfs_count_exact(&fs) == 1);
+    cr_assert(ringfs_item_discard(&fs) == RINGFS_OK);
+    cr_assert(ringfs_item_discard(&fs) == RINGFS_EMPTY);
+    cr_assert(ringfs_count_exact(&fs) == 0);
+}
 /* vim: set ts=4 sw=4 et: */
 
