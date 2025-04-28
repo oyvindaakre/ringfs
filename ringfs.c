@@ -455,8 +455,14 @@ int ringfs_discard(struct ringfs *fs)
 
 int ringfs_item_discard(struct ringfs *fs)
 {
-        _slot_set_status(fs, &fs->read, SLOT_GARBAGE);
-        _loc_advance_slot(fs, &fs->read);
+    if (_loc_equal(&fs->read, &fs->write)) {
+        return RINGFS_EMPTY;
+    }
+
+    if (_slot_set_status(fs, &fs->read, SLOT_GARBAGE) == -1) {
+        return RINGFS_ERR;
+    }
+    _loc_advance_slot(fs, &fs->read);
 
     return RINGFS_OK;
 }

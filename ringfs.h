@@ -228,6 +228,16 @@ int ringfs_fetch_ex(struct ringfs *fs, void *object, int size);
  */
 int ringfs_discard(struct ringfs *fs);
 
+/**
+ * Discards the item pointed by the read pointer,
+ * unless the read pointer points to the write pointer which
+ * means the ring is empty.
+ *
+ * @param fs Initialized RingFS instance.
+ * @returns RINGFS_OK on success
+ * @returns RINGFS_EMPTY if ring is empty
+ * @returns RINGFS_ERR otherwise
+ */
 int ringfs_item_discard(struct ringfs *fs);
 
 /**
