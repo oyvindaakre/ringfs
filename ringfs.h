@@ -60,6 +60,11 @@ struct ringfs_flash_partition
      * @param ... Arguments.
      */
     void (*log)(struct ringfs_flash_partition *flash, const char *fmt, ...);
+
+    /**
+     * Pointer to some user context data, such as flash driver instance.
+     */
+    void *user_context;
 };
 
 /** @private */
