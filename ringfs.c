@@ -95,13 +95,10 @@ enum slot_status {
     SLOT_GARBAGE  = 0xFF000000, /**< Slot contents discarded and no longer valid. */
 };
 
-#define DATA_TYPE_UNKNOWN (uint8_t)0xFF
-
 struct slot_header {
     uint32_t status;
-    uint8_t reserved;
-    uint8_t data_type;
     uint16_t data_length;
+    uint16_t reserved;
 };
 
 static int _slot_address(struct ringfs *fs, struct ringfs_loc *loc)
@@ -419,20 +416,19 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size)
     {
         return RINGFS_INVALID_PARAMETER;
     }
-    return ringfs_append_var(fs, object, size, DATA_TYPE_UNKNOWN);
+    return ringfs_append_var(fs, object, size);
 }
 
-struct slot_header slot_header_create(uint32_t status, uint16_t data_length, uint8_t data_type)
+struct slot_header slot_header_create(uint32_t status, uint16_t data_length)
 {
     return (struct slot_header) {
         .status = status,
         .data_length = data_length,
-        .data_type = data_type,
-        .reserved = 0xFF
+        .reserved = 0xFFFF,
     };
 }
 
-int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size, uint8_t type)
+int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size)
 {
     int slots_needed = _size_to_number_of_slots(fs, size);
     if (slots_needed > fs->slots_per_sector)
@@ -490,10 +486,7 @@ int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size, uint
     int free_slots_in_sector = fs->slots_per_sector - fs->write.slot;
     if (slots_needed > free_slots_in_sector)
     {
-        struct slot_header header = slot_header_create(
-                SLOT_GARBAGE,
-                _slots_to_max_data_length(fs, free_slots_in_sector),
-                type);
+        struct slot_header header = slot_header_create(SLOT_GARBAGE, _slots_to_max_data_length(fs, free_slots_in_sector));
         if (_slot_set_header(fs, &fs->write, &header) == -1)
         {
             return RINGFS_ERR;
@@ -503,10 +496,7 @@ int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size, uint
     }
 
     /* Preallocate slot. */
-    struct slot_header header = slot_header_create(
-            SLOT_RESERVED,
-            size,
-            type);
+    struct slot_header header = slot_header_create(SLOT_RESERVED, size);
     if (_slot_set_header(fs, &fs->write, &header) == -1)
     {
         return RINGFS_ERR;
@@ -540,13 +530,12 @@ int ringfs_fetch(struct ringfs *fs, void *object)
 int ringfs_fetch_ex(struct ringfs *fs, void *object, int size)
 {
     uint16_t object_size = size;
-    uint8_t type = 0;
-    return ringfs_fetch_var(fs, object, &object_size, &type);
+    return ringfs_fetch_var(fs, object, &object_size);
 }
 
-int ringfs_fetch_var(struct ringfs *fs, void *object, uint16_t *size, uint8_t *type)
+int ringfs_fetch_var(struct ringfs *fs, void *object, uint16_t *size)
 {
-    if (!size || !type)
+    if (!size)
     {
         return RINGFS_INVALID_PARAMETER;
     }
@@ -571,7 +560,6 @@ int ringfs_fetch_var(struct ringfs *fs, void *object, uint16_t *size, uint8_t *t
                 return RINGFS_ERR;
             }
             *size = header.data_length;
-            *type = header.data_type;
             _loc_advance_slot(fs, &fs->cursor, _size_to_number_of_slots(fs, header.data_length));
             return RINGFS_OK;
         }

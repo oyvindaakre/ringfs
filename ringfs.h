@@ -204,10 +204,9 @@ int ringfs_append_ex(struct ringfs *fs, const void *object, int size);
  * @param fs Initialized RingFS instance.
  * @param object Object to be stored.
  * @param size Size of the object in bytes.
- * @param type The type of the object to be stored
  * @returns Zero on success, -1 on failure.
  */
-int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size, uint8_t type);
+int ringfs_append_var(struct ringfs *fs, const void *object, uint16_t size);
 
 /**
  * Fetch next object from the ring, oldest-first. Advances read cursor.
@@ -241,10 +240,9 @@ int ringfs_fetch_ex(struct ringfs *fs, void *object, int size);
  * @param fs Initialized RingFS instance.
  * @param object Buffer to store retrieved object.
  * @param size [in/out] Size of the destination object in bytes. On successful return contains the number of bytes written to \p object.
- * @param type [out] The type of the stored object
  * @returns Zero on success, -1 on failure.
  */
-int ringfs_fetch_var(struct ringfs *fs, void *object, uint16_t *size, uint8_t *type);
+int ringfs_fetch_var(struct ringfs *fs, void *object, uint16_t *size);
 
 /**
  * Discard all fetched objects up to the read cursor.
