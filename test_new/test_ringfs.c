@@ -479,17 +479,10 @@ Test(test_suite_ringfs, test_ringfs_append_and_fetch_objects_of_different_size)
     ringfs_init(&fs, &flash, DEFAULT_VERSION, SLOT_SIZE);
     ringfs_format(&fs);
 
-    enum data_type {DATA_HELLO_WORLD, DATA_INTEGER};
-    char hello_world[32] = "Hello world!";
-    uint8_t integer = 42;
-
-    const int hello_world_length = strlen(hello_world);
-    cr_assert(ringfs_append_var(&fs, hello_world, hello_world_length, DATA_HELLO_WORLD) == 0);
-    cr_assert(ringfs_append_var(&fs, &integer, sizeof(integer), DATA_INTEGER) == 0);
-    cr_assert_eq(ringfs_count_exact(&fs), 2);
-
+    // Define some data types
+    enum data_type {DATA_NOT_SET, DATA_HELLO_WORLD, DATA_INTEGER};
     // Define a data structure for records that are read back (an example)
-    struct fifo_data_type
+    struct __attribute__((packed)) fifo_data_type
     {
         uint8_t type;
         union {
@@ -498,23 +491,33 @@ Test(test_suite_ringfs, test_ringfs_append_and_fetch_objects_of_different_size)
         } data;
     };
 
+    struct fifo_data_type hello_world = {.type = DATA_HELLO_WORLD, .data.message = "Hello world!"};
+    struct fifo_data_type integer = {.type = DATA_INTEGER, .data.integer = 42};
+
+    const int size_hello_world = sizeof(uint8_t) + strlen(hello_world.data.message);
+    const int size_integer = sizeof(uint8_t) + sizeof(integer.data.integer);
+
+    cr_assert(ringfs_append_var(&fs, &hello_world, size_hello_world) == 0);
+    cr_assert(ringfs_append_var(&fs, &integer, size_integer) == 0);
+    cr_assert_eq(ringfs_count_exact(&fs), 2);
+
     struct fifo_data_type fifo_data = {0,};
-    uint16_t fifo_data_size = sizeof(fifo_data.data);
+    uint16_t fifo_data_size = sizeof(fifo_data);
 
     // Now read back the first record
-    cr_assert(ringfs_fetch_var(&fs, &fifo_data.data, &fifo_data_size, &fifo_data.type) == 0);
+    cr_assert(ringfs_fetch_var(&fs, &fifo_data, &fifo_data_size) == 0);
     cr_assert_eq(fifo_data.type, DATA_HELLO_WORLD);
-    cr_assert_eq(fifo_data_size, hello_world_length);
-    cr_assert_arr_eq(fifo_data.data.message, hello_world, hello_world_length);
+    cr_assert_eq(fifo_data_size, size_hello_world);
+    cr_assert_arr_eq(fifo_data.data.message, hello_world.data.message, size_hello_world);
 
     memset(&fifo_data, 0, sizeof(fifo_data));
-    fifo_data_size = sizeof(fifo_data.data);
+    fifo_data_size = sizeof(fifo_data);
 
     // Now read back the second record
-    cr_assert(ringfs_fetch_var(&fs, &fifo_data.data, &fifo_data_size, &fifo_data.type) == 0);
+    cr_assert(ringfs_fetch_var(&fs, &fifo_data, &fifo_data_size) == 0);
     cr_assert_eq(fifo_data.type, DATA_INTEGER);
-    cr_assert_eq(fifo_data_size, sizeof(integer));
-    cr_assert_eq(fifo_data.data.integer, integer);
+    cr_assert_eq(fifo_data_size, size_integer);
+    cr_assert_eq(fifo_data.data.integer, integer.data.integer);
 
     // Discard read data
     cr_assert(ringfs_discard(&fs) == 0);
